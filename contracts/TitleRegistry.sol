@@ -9,6 +9,8 @@ contract TitleRegistry is ReentrancyGuard {
     error NotApprovedByOwner();
     // error AlreadyListed(address titleAddress, uint256 tokenId);
     error NotOwner();
+
+    error NotAdmin();
     // error NotListed(address titleAddress, uint256 tokenId);
     // error NoProceeds();
     error OwnerMustBeFromTheSameNeighborhood(
@@ -28,6 +30,11 @@ contract TitleRegistry is ReentrancyGuard {
         address indexed buyer,
         uint256 indexed surveyNumber,
         uint256 price
+    );
+
+    event TransactionCanceled(
+        address indexed seller,
+        uint256 indexed surveyNumber
     );
 
     // Estructura de un titulo de propiedad
@@ -61,29 +68,29 @@ contract TitleRegistry is ReentrancyGuard {
     }
 
     mapping(uint256 => TitleDetails) private land;
-    address private owner;
+    address private admin;
     mapping(string => address) private superAdmin;
     mapping(address => Profiles) private profile;
 
     constructor() {
-        owner = msg.sender;
+        admin = msg.sender;
     }
 
-    modifier onlyOwner() {
-        if (msg.sender == owner) {
-            revert NotOwner();
+    modifier onlyAdmin() {
+        if (msg.sender == admin) {
+            revert NotAdmin();
         }
         _;
     }
 
-    function addSuperAdmin(address _superAdmin, string memory _neighborhood)
-        public
-        onlyOwner
-    {
+    function addSuperAdmin(
+        address _superAdmin,
+        string memory _neighborhood
+    ) public onlyAdmin {
         superAdmin[_neighborhood] = _superAdmin;
     }
 
-    function registertTitle(
+    function registerTitle(
         string memory _state,
         string memory _district,
         string memory _neighborhood,
@@ -92,11 +99,19 @@ contract TitleRegistry is ReentrancyGuard {
         uint256 _marketValue,
         uint256 id
     ) public returns (bool) {
-        if (superAdmin[_neighborhood] == msg.sender || owner == msg.sender) {
+        if (superAdmin[_neighborhood] != msg.sender) {
             revert OwnerMustBeFromTheSameNeighborhood(
                 msg.sender,
                 _neighborhood
             );
+        }
+
+        if (admin != msg.sender) {
+            revert NotAdmin();
+        }
+
+        if (_marketValue <= 0) {
+            revert PriceMustBeAboveZero();
         }
         land[id].state = _state;
         land[id].district = _district;
@@ -114,7 +129,9 @@ contract TitleRegistry is ReentrancyGuard {
         return true;
     }
 
-    function landInfoOwner(uint256 id)
+    function landInfoOwner(
+        uint256 id
+    )
         public
         view
         returns (
@@ -138,17 +155,9 @@ contract TitleRegistry is ReentrancyGuard {
         );
     }
 
-    function landInfoUser(uint256 id)
-        public
-        view
-        returns (
-            address,
-            uint256,
-            bool,
-            address,
-            ReqStatus
-        )
-    {
+    function landInfoUser(
+        uint256 id
+    ) public view returns (address, uint256, bool, address, ReqStatus) {
         return (
             land[id].currentOwner,
             land[id].marketValue,
