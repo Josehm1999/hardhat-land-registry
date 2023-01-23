@@ -7,15 +7,22 @@ contract TitleRegistry is ReentrancyGuard {
     error PriceMustBeAboveZero();
     // error NotApprovedForSystem();
     error NotApprovedByOwner();
-    // error AlreadyListed(address titleAddress, uint256 tokenId);
+    error PropertyAlreadyRegistered(uint256 id);
     error NotOwner();
 
     error NotAdmin();
     // error NotListed(address titleAddress, uint256 tokenId);
     // error NoProceeds();
-    error OwnerMustBeFromTheSameNeighborhood(
+    error PropertyIsNotRegistered(uint256 id);
+
+    error MustBeRegionalAdminAndFromSameDistrict(
         address owner,
-        string neighborhood
+        string district
+    );
+
+    error AdminAlreadyRegisteredForDistrict(
+        address regionalAdmin,
+        string district
     );
     // error TransferFailed();
     error PriceNotMet(uint256 surveyNumber, uint256 price);
@@ -36,6 +43,8 @@ contract TitleRegistry is ReentrancyGuard {
         address indexed seller,
         uint256 indexed surveyNumber
     );
+
+    event RegionalAdminCreated(address indexed regionalAdmin, string district);
 
     // Estructura de un titulo de propiedad
     struct TitleDetails {
@@ -69,7 +78,7 @@ contract TitleRegistry is ReentrancyGuard {
 
     mapping(uint256 => TitleDetails) private land;
     address private admin;
-    mapping(string => address) private superAdmin;
+    mapping(string => address) private regionalAdmin;
     mapping(address => Profiles) private profile;
 
     constructor() {
@@ -77,17 +86,21 @@ contract TitleRegistry is ReentrancyGuard {
     }
 
     modifier onlyAdmin() {
-        if (msg.sender == admin) {
+        if (msg.sender != admin) {
             revert NotAdmin();
         }
         _;
     }
 
-    function addSuperAdmin(
-        address _superAdmin,
-        string memory _neighborhood
-    ) public onlyAdmin {
-        superAdmin[_neighborhood] = _superAdmin;
+    function addRegionalAdmin(address _regionalAdmin, string memory _district)
+        public
+        onlyAdmin
+    {
+        if (regionalAdmin[_district] != address(0)) {
+            revert AdminAlreadyRegisteredForDistrict(_regionalAdmin, _district);
+        }
+        regionalAdmin[_district] = _regionalAdmin;
+        emit RegionalAdminCreated(_regionalAdmin, _district);
     }
 
     function registerTitle(
@@ -96,42 +109,40 @@ contract TitleRegistry is ReentrancyGuard {
         string memory _neighborhood,
         uint256 _surveyNumber,
         address payable _ownerAddress,
-        uint256 _marketValue,
-        uint256 id
+        uint256 _marketValue
     ) public returns (bool) {
-        if (superAdmin[_neighborhood] != msg.sender) {
-            revert OwnerMustBeFromTheSameNeighborhood(
+        if (regionalAdmin[_district] != msg.sender) {
+            revert MustBeRegionalAdminAndFromSameDistrict(
                 msg.sender,
-                _neighborhood
+                _district
             );
         }
 
-        if (admin != msg.sender) {
-            revert NotAdmin();
+        if (land[_surveyNumber].surveyNumber != 0) {
+            revert PropertyAlreadyRegistered(_surveyNumber);
         }
 
         if (_marketValue <= 0) {
             revert PriceMustBeAboveZero();
         }
-        land[id].state = _state;
-        land[id].district = _district;
-        land[id].neighborhood = _neighborhood;
-        land[id].surveyNumber = _surveyNumber;
-        land[id].currentOwner = _ownerAddress;
-        land[id].marketValue = _marketValue;
-        profile[_ownerAddress].assetList.push(id);
+
+        land[_surveyNumber].state = _state;
+        land[_surveyNumber].district = _district;
+        land[_surveyNumber].neighborhood = _neighborhood;
+        land[_surveyNumber].surveyNumber = _surveyNumber;
+        land[_surveyNumber].currentOwner = _ownerAddress;
+        land[_surveyNumber].marketValue = _marketValue;
+        profile[_ownerAddress].assetList.push(_surveyNumber);
 
         emit PropertyListed(
-            land[id].currentOwner,
-            land[id].surveyNumber,
-            land[id].marketValue
+            land[_surveyNumber].currentOwner,
+            _surveyNumber,
+            land[_surveyNumber].marketValue
         );
         return true;
     }
 
-    function landInfoOwner(
-        uint256 id
-    )
+    function landInfoOwner(uint256 surveyNumber)
         public
         view
         returns (
@@ -144,53 +155,49 @@ contract TitleRegistry is ReentrancyGuard {
             ReqStatus
         )
     {
+        if (land[surveyNumber].surveyNumber == 0) {
+            revert PropertyIsNotRegistered(surveyNumber);
+        }
+
         return (
-            land[id].state,
-            land[id].district,
-            land[id].neighborhood,
-            land[id].surveyNumber,
-            land[id].isAvailable,
-            land[id].requester,
-            land[id].requestStatus
+            land[surveyNumber].state,
+            land[surveyNumber].district,
+            land[surveyNumber].neighborhood,
+            land[surveyNumber].surveyNumber,
+            land[surveyNumber].isAvailable,
+            land[surveyNumber].requester,
+            land[surveyNumber].requestStatus
         );
     }
 
-    function landInfoUser(
-        uint256 id
-    ) public view returns (address, uint256, bool, address, ReqStatus) {
+    function landInfoUser(uint256 surveyNumber)
+        public
+        view
+        returns (
+            address,
+            uint256,
+            bool,
+            address,
+            ReqStatus
+        )
+    {
+        if (land[surveyNumber].surveyNumber != 0) {
+            revert PropertyIsNotRegistered(surveyNumber);
+        }
         return (
-            land[id].currentOwner,
-            land[id].marketValue,
-            land[id].isAvailable,
-            land[id].requester,
-            land[id].requestStatus
+            land[surveyNumber].currentOwner,
+            land[surveyNumber].marketValue,
+            land[surveyNumber].isAvailable,
+            land[surveyNumber].requester,
+            land[surveyNumber].requestStatus
         );
     }
 
-    function generateId(
-        string memory _state,
-        string memory _district,
-        string memory _neighborhood,
-        uint256 _surveyNumber
-    ) public view returns (uint256) {
-        return
-            uint256(
-                keccak256(
-                    abi.encodePacked(
-                        _state,
-                        _district,
-                        _neighborhood,
-                        _surveyNumber
-                    )
-                )
-            ) % 10000000000000;
-    }
-
-    function requestToLandOwner(uint256 id) public {
-        require(land[id].isAvailable, "No se encuentra disponible");
-        land[id].requester = msg.sender;
-        land[id].isAvailable = false;
-        land[id].requestStatus = ReqStatus.PENDING;
+    function requestToLandOwner(uint256 surveyNumber) public {
+        require(land[surveyNumber].isAvailable, "No se encuentra disponible");
+        land[surveyNumber].requester = msg.sender;
+        land[surveyNumber].isAvailable = false;
+        land[surveyNumber].requestStatus = ReqStatus.PENDING;
     }
 
     function viewAssets() external view returns (uint256[] memory) {
@@ -243,17 +250,23 @@ contract TitleRegistry is ReentrancyGuard {
         );
     }
 
-    function removeOwnership(address previousOwner, uint256 id) private {
-        uint256 index = findId(id, previousOwner);
+    function removeOwnership(address previousOwner, uint256 surveyNumber)
+        private
+    {
+        uint256 index = findId(surveyNumber, previousOwner);
         profile[previousOwner].assetList[index] = profile[previousOwner]
             .assetList[profile[previousOwner].assetList.length - 1];
         profile[previousOwner].assetList.pop();
     }
 
-    function findId(uint256 id, address user) public view returns (uint256) {
+    function findId(uint256 surveyNumber, address user)
+        public
+        view
+        returns (uint256)
+    {
         uint256 i;
         for (i = 0; i < profile[user].assetList.length; i++) {
-            if (profile[user].assetList[i] == id) return i;
+            if (profile[user].assetList[i] == surveyNumber) return i;
         }
         return i;
     }
