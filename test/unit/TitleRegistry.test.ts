@@ -132,8 +132,10 @@ import { TitleRegistry } from '../../typechain-types'
         })
       })
 
+      describe('updateTitleRegistry', function (){})
+
       describe('findProperty', function () {
-        it('No existe la una propiedad con el número de partida registral brindado', async function () {
+        it('No existe la una propiedad con el número de partida registral brindado- Información para dueños', async function () {
           titleregistry = titleregistryContract.connect(regionalAdmin)
           await titleregistry.registerTitle(
             'Lima',
@@ -144,40 +146,206 @@ import { TitleRegistry } from '../../typechain-types'
             PRICE
           )
           await expect(
-            titleregistryContract.landInfoOwner(12467674888)
+            titleregistry.landInfoOwner(12467674888)
+          ).to.be.revertedWithCustomError(
+            titleregistry,
+            'PropertyIsNotRegistered'
+          )
+        })
+
+        it('No existe la una propiedad con el número de partida registral brindado - Información para usuarios', async function () {
+          titleregistry = titleregistryContract.connect(regionalAdmin)
+          await titleregistry.registerTitle(
+            'Lima',
+            'Miraflores',
+            'Miraflores',
+            12467674889,
+            seller.getAddress(),
+            PRICE
+          )
+          titleregistry = titleregistryContract.connect(buyer)
+          await expect(
+            titleregistry.landInfoUser(12467674888)
           ).to.be.revertedWithCustomError(
             titleregistry,
             'PropertyIsNotRegistered'
           )
         })
       })
+
+      describe('makeAvailable', function () {
+        it('Se emite un evento cuando el dueño de una propiedad cambia su disponibilidad', async function () {
+          titleregistry = titleregistryContract.connect(regionalAdmin)
+          await titleregistry.registerTitle(
+            'Lima',
+            'Miraflores',
+            'Miraflores',
+            12467674889,
+            seller.getAddress(),
+            PRICE
+          )
+          titleregistry = titleregistryContract.connect(seller)
+          await expect(titleregistry.makeAvailable(12467674889)).to.emit(
+            titleregistry,
+            'PropertyChangedAvailability'
+          )
+        })
+        it('Solo el dueño de una propiedad puede cambiar su disponibilidad', async function () {
+          titleregistry = titleregistryContract.connect(regionalAdmin)
+          await titleregistry.registerTitle(
+            'Lima',
+            'Miraflores',
+            'Miraflores',
+            12467674889,
+            seller.getAddress(),
+            PRICE
+          )
+          titleregistry = titleregistryContract.connect(buyer)
+          await expect(
+            titleregistry.makeAvailable(12467674889)
+          ).to.be.revertedWithCustomError(titleregistry, 'NotOwner')
+        })
+      })
+
+      describe('makeUnavailable', function () {
+
+      })
+      describe('requestToLandOwner', function () {
+        it('Se emite un evento al realizar una solicitud de compra al dueño de una propiedad que se encuentra disponible', async function () {
+          titleregistry = titleregistryContract.connect(regionalAdmin)
+          await titleregistry.registerTitle(
+            'Lima',
+            'Miraflores',
+            'Miraflores',
+            12467674889,
+            seller.getAddress(),
+            PRICE
+          )
+          titleregistry = titleregistryContract.connect(seller)
+          await titleregistry.makeAvailable(12467674889)
+          titleregistry = titleregistryContract.connect(buyer)
+          await expect(titleregistry.requestToLandOwner(12467674889)).to.emit(
+            titleregistry,
+            'PropertyStatusChanged'
+          )
+        })
+        it('No se puede realizar solicitudes de compra a propiedades que no esten disponibles', async function () {
+          titleregistry = titleregistryContract.connect(regionalAdmin)
+          await titleregistry.registerTitle(
+            'Lima',
+            'Miraflores',
+            'Miraflores',
+            12467674889,
+            seller.getAddress(),
+            PRICE
+          )
+          titleregistry = titleregistryContract.connect(buyer)
+          await expect(
+            titleregistry.requestToLandOwner(12467674889)
+          ).to.be.revertedWithCustomError(titleregistry, 'PropertyNotAvailable')
+        })
+      })
+
+      describe('processRequest', function () {
+        it('Se emite un evento al realizar una solicitud de compra al dueño de una propiedad que se encuentra disponible', async function () {
+          titleregistry = titleregistryContract.connect(regionalAdmin)
+          await titleregistry.registerTitle(
+            'Lima',
+            'Miraflores',
+            'Miraflores',
+            12467674889,
+            seller.getAddress(),
+            PRICE
+          )
+          titleregistry = titleregistryContract.connect(seller)
+          await titleregistry.makeAvailable(12467674889)
+          titleregistry = titleregistryContract.connect(buyer)
+          await titleregistry.requestToLandOwner(12467674889)
+          titleregistry = titleregistryContract.connect(seller)
+          await expect(titleregistry.processRequest(12467674889, 3)).to.emit(
+            titleregistry,
+            'PropertyStatusChanged'
+          )
+        })
+        it('Solo se pueden procesar solicitudes de compra que se encuentren en estado pendiente (PENDING))', async function () {
+          titleregistry = titleregistryContract.connect(regionalAdmin)
+          await titleregistry.registerTitle(
+            'Lima',
+            'Miraflores',
+            'Miraflores',
+            12467674889,
+            seller.getAddress(),
+            PRICE
+          )
+          titleregistry = titleregistryContract.connect(seller)
+          await titleregistry.makeAvailable(12467674889)
+          titleregistry = titleregistryContract.connect(buyer)
+          await titleregistry.requestToLandOwner(12467674889)
+          await expect(
+            titleregistry.processRequest(12467674889, 3)
+          ).to.be.revertedWithCustomError(titleregistry, 'NotOwner')
+        })
+      })
+
+      describe('buyProperty', function () {
+        it('Se emite un evento al completar una transacción de compra exitosamente.', async function () {
+          titleregistry = titleregistryContract.connect(regionalAdmin)
+          await titleregistry.registerTitle(
+            'Lima',
+            'Miraflores',
+            'Miraflores',
+            12467674889,
+            seller.getAddress(),
+            PRICE
+          )
+          titleregistry = titleregistryContract.connect(seller)
+          await titleregistry.makeAvailable(12467674889)
+          titleregistry = titleregistryContract.connect(buyer)
+          await titleregistry.requestToLandOwner(12467674889)
+          titleregistry = titleregistryContract.connect(seller)
+          await titleregistry.processRequest(12467674889, 3)
+          titleregistry = titleregistryContract.connect(buyer)
+          await expect(titleregistry.buyProperty(12467674889)).to.emit(
+            titleregistry,
+            'PropertyBought'
+          )
+        })
+        it('Solo se pueden completar una compra que haya sido aprovada por el dueño de la propiedad', async function () {
+          titleregistry = titleregistryContract.connect(regionalAdmin)
+          await titleregistry.registerTitle(
+            'Lima',
+            'Miraflores',
+            'Miraflores',
+            12467674889,
+            seller.getAddress(),
+            PRICE
+          )
+          titleregistry = titleregistryContract.connect(seller)
+          await titleregistry.makeAvailable(12467674889)
+          titleregistry = titleregistryContract.connect(buyer)
+          await titleregistry.requestToLandOwner(12467674889)
+          titleregistry = titleregistryContract.connect(seller)
+          await titleregistry.processRequest(12467674889, 0)
+          titleregistry = titleregistryContract.connect(buyer)
+          await expect(
+            titleregistry.buyProperty(12467674889)
+          ).to.be.revertedWithCustomError(titleregistry, 'NotApprovedByOwner')
+        })
+
+        it('', async function (){})
+        it('', async function (){})
+      })
+
+
+      describe('withDrawProceeds', function (){
+      })
+
+      describe('removeOwnership', function() {
+
+      })
+
     })
 
-//     it('Exclusivamente titulos que no han sido listados', async function() {
-//         await titleregistry.listTitle(basicNft.address, TOKEN_ID, PRICE);
-//         // const error = `AlreadyListed("${basicNft.address}", ${TOKEN_ID})`
-//         await expect(
-//             titleregistry.listTitle(basicNft.address, TOKEN_ID, PRICE)
-//         ).to.be.revertedWithCustomError(titleregistry, 'AlreadyListed');
-//     });
-//
-//     it('Exclusivamente permite a dueños listar titulos', async function() {
-//         titleregistry = titleregistryContract.connect(user);
-//         await expect(
-//             titleregistry.listTitle(basicNft.address, TOKEN_ID, PRICE)
-//         ).to.be.revertedWithCustomError(titleregistry, 'NotOwner');
-//     });
-//
-//     it('Necesita aprobación para listar titulo', async function() {
-//         await basicNft.approve(ethers.constants.AddressZero, TOKEN_ID);
-//         await expect(
-//             titleregistry.listTitle(basicNft.address, TOKEN_ID, PRICE)
-//         ).to.be.revertedWithCustomError(
-//             titleregistry,
-//             'NotApprovedForSystem'
-//         );
-//     });
-//
 //     it('Actualiza los listados de los titulos con el vendedor y el precio', async function() {
 //         await titleregistry.listTitle(basicNft.address, TOKEN_ID, PRICE);
 //         const listing = await titleregistry.getListing(

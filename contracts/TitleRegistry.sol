@@ -7,14 +7,16 @@ contract TitleRegistry is ReentrancyGuard {
     error PriceMustBeAboveZero();
     // error NotApprovedForSystem();
     error NotApprovedByOwner();
+    error PropertyNotAvailable();
     error PropertyAlreadyRegistered(uint256 id);
     error NotOwner();
-
     error NotAdmin();
     // error NotListed(address titleAddress, uint256 tokenId);
-    // error NoProceeds();
+    error MustBeUserWhoMadeTheInitialRequest();
+    error RejectRequestBeforeChangingAvailability();
+    error NoProceeds();
     error PropertyIsNotRegistered(uint256 id);
-
+    error TransferFailed();
     error MustBeRegionalAdminAndFromSameDistrict(
         address owner,
         string district
@@ -39,6 +41,8 @@ contract TitleRegistry is ReentrancyGuard {
         uint256 price
     );
 
+    event PropertyStatusChanged(uint256 indexed surveyNumber, ReqStatus);
+    event PropertyChangedAvailability(uint256 indexed surveyNumber);
     event TransactionCanceled(
         address indexed seller,
         uint256 indexed surveyNumber
@@ -52,7 +56,7 @@ contract TitleRegistry is ReentrancyGuard {
         string district;
         string neighborhood;
         uint256 surveyNumber;
-        address payable currentOwner;
+        address currentOwner;
         uint256 marketValue;
         bool isAvailable;
         address requester;
@@ -80,6 +84,7 @@ contract TitleRegistry is ReentrancyGuard {
     address private admin;
     mapping(string => address) private regionalAdmin;
     mapping(address => Profiles) private profile;
+    mapping(address => uint256) private s_proceeds;
 
     constructor() {
         admin = msg.sender;
@@ -142,6 +147,25 @@ contract TitleRegistry is ReentrancyGuard {
         return true;
     }
 
+    function updateTitleRegistry(uint256 _surveyNumber, uint256 _marketValue)
+        external
+    {
+        if (land[_surveyNumber].surveyNumber == 0) {
+            revert PropertyIsNotRegistered(_surveyNumber);
+        }
+
+        if (land[_surveyNumber].currentOwner != msg.sender) {
+            revert NotOwner();
+        }
+
+        land[_surveyNumber].marketValue = _marketValue;
+        emit PropertyListed(
+            land[_surveyNumber].currentOwner,
+            _surveyNumber,
+            land[_surveyNumber].marketValue
+        );
+    }
+
     function landInfoOwner(uint256 surveyNumber)
         public
         view
@@ -181,7 +205,7 @@ contract TitleRegistry is ReentrancyGuard {
             ReqStatus
         )
     {
-        if (land[surveyNumber].surveyNumber != 0) {
+        if (land[surveyNumber].surveyNumber == 0) {
             revert PropertyIsNotRegistered(surveyNumber);
         }
         return (
@@ -194,10 +218,13 @@ contract TitleRegistry is ReentrancyGuard {
     }
 
     function requestToLandOwner(uint256 surveyNumber) public {
-        require(land[surveyNumber].isAvailable, "No se encuentra disponible");
+        if (!land[surveyNumber].isAvailable) {
+            revert PropertyNotAvailable();
+        }
         land[surveyNumber].requester = msg.sender;
         land[surveyNumber].isAvailable = false;
         land[surveyNumber].requestStatus = ReqStatus.PENDING;
+        emit PropertyStatusChanged(surveyNumber, ReqStatus.PENDING);
     }
 
     function viewAssets() external view returns (uint256[] memory) {
@@ -208,45 +235,82 @@ contract TitleRegistry is ReentrancyGuard {
         return (land[property].requester);
     }
 
-    function processRequest(uint256 property, ReqStatus status) public {
-        if (land[property].currentOwner == msg.sender) {
+    function processRequest(uint256 surveyNumber, ReqStatus status) public {
+        if (land[surveyNumber].currentOwner != msg.sender) {
             revert NotOwner();
         }
 
-        land[property].requestStatus = status;
+        land[surveyNumber].requestStatus = status;
+        emit PropertyStatusChanged(surveyNumber, status);
         if (status == ReqStatus.REJECTED) {
-            land[property].requester = address(0);
-            land[property].requestStatus = ReqStatus.DEFAULT;
+            land[surveyNumber].requester = address(0);
+            land[surveyNumber].requestStatus = ReqStatus.DEFAULT;
         }
     }
 
-    function makeAvailable(uint256 property) public {
-        if (land[property].currentOwner == msg.sender) {
+    function makeAvailable(uint256 surveyNumber) public {
+        if (land[surveyNumber].currentOwner != msg.sender) {
             revert NotOwner();
         }
-        land[property].isAvailable = true;
+        land[surveyNumber].isAvailable = true;
+        emit PropertyChangedAvailability(surveyNumber);
     }
 
-    function buyProperty(uint256 property) external payable nonReentrant {
-        if (land[property].requestStatus == ReqStatus.APPROVED) {
+    function makeUnavailable(uint256 surveyNumber) public {
+        if (land[surveyNumber].currentOwner != msg.sender) {
+            revert NotOwner();
+        }
+
+        if (land[surveyNumber].requestStatus == ReqStatus.PENDING) {
+            revert RejectRequestBeforeChangingAvailability();
+        }
+
+        land[surveyNumber].isAvailable = false;
+        emit PropertyChangedAvailability(surveyNumber);
+    }
+
+    function buyProperty(uint256 surveyNumber) external payable nonReentrant {
+        if (land[surveyNumber].requestStatus != ReqStatus.APPROVED) {
             revert NotApprovedByOwner();
         }
         if (
             msg.value >=
-            (land[property].marketValue + ((land[property].marketValue) / 10))
+            (land[surveyNumber].marketValue +
+                ((land[surveyNumber].marketValue) / 10))
         ) {
             revert PriceNotMet(
-                land[property].surveyNumber,
-                land[property].marketValue
+                land[surveyNumber].surveyNumber,
+                land[surveyNumber].marketValue
             );
         }
+        // No se le envía directamente el dinero al vendedor
+        // https://github.com/fravoll/solidity-patterns/blob/master/docs/pull_over_push.md
 
-        land[property].currentOwner.transfer(land[property].marketValue);
+        // Enviar el dinero al usuario ❌
+        // Hacer que tengan que retirar el dinero ✅
+
+        // address payable Owner = land[surveyNumber].currentOwner;
+        // Owner.transfer(
+        //     land[surveyNumber].marketValue
+        // );
+
+        if (land[surveyNumber].requester != msg.sender) {
+            revert MustBeUserWhoMadeTheInitialRequest();
+        }
+
+        s_proceeds[land[surveyNumber].currentOwner] += msg.value;
+
+        removeOwnership(land[surveyNumber].currentOwner, surveyNumber);
+        land[surveyNumber].currentOwner = msg.sender;
+        land[surveyNumber].isAvailable = false;
+        land[surveyNumber].requester = address(0);
+        land[surveyNumber].requestStatus = ReqStatus.DEFAULT;
+        profile[msg.sender].assetList.push(surveyNumber); //adds the property to the asset list of the new owner.
 
         emit PropertyBought(
             msg.sender,
-            land[property].surveyNumber,
-            land[property].marketValue
+            land[surveyNumber].surveyNumber,
+            land[surveyNumber].marketValue
         );
     }
 
@@ -269,5 +333,22 @@ contract TitleRegistry is ReentrancyGuard {
             if (profile[user].assetList[i] == surveyNumber) return i;
         }
         return i;
+    }
+
+    function withDrawProceeds() external {
+        uint256 proceeds = s_proceeds[msg.sender];
+
+        if (proceeds <= 0) {
+            revert NoProceeds();
+        }
+        s_proceeds[msg.sender] = 0;
+        (bool success, ) = payable(msg.sender).call{value: proceeds}("");
+        if (!success) {
+            revert TransferFailed();
+        }
+    }
+
+    function getProceeds(address seller) external view returns (uint256) {
+        return s_proceeds[seller];
     }
 }
