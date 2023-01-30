@@ -42,9 +42,9 @@ export const networkConfig: networkConfigInfo = {
 export const developmentChains = ["hardhat", "localhost"];
 export const VERIFICATION_BLOCK_CONFIRMATIONS = 6;
 export const frontEndContractsFile =
-  "../../t3-title-registry-app/constants/networkMapping.json";
+  "../title-registry-app-v2/constants/networkMapping.json";
 // export const frontEndContractsFile2 =
 //     "../nextjs-nft-marketplace-thegraph-fcc/constants/networkMapping.json"
-export const frontEndAbiLocation = "../../t3-title-registry-app/constants/";
+export const frontEndAbiLocation = "../title-registry-app-v2/constants/";
 // export const frontEndAbiLocation2 =
 //     "../nextjs-nft-marketplace-thegraph-fcc/constants/"

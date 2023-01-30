@@ -27,7 +27,12 @@ contract TitleRegistry is ReentrancyGuard {
         string district
     );
     // error TransferFailed();
-    error PriceNotMet(uint256 surveyNumber, uint256 price);
+    error PriceNotMet(
+        uint256 surveyNumber,
+        uint256 price,
+        uint256 price_sended,
+        uint256 price_calculated
+    );
 
     event PropertyListed(
         address indexed seller,
@@ -47,6 +52,7 @@ contract TitleRegistry is ReentrancyGuard {
         address indexed seller,
         uint256 indexed surveyNumber
     );
+    event TransferSuccess();
 
     event RegionalAdminCreated(address indexed regionalAdmin, string district);
 
@@ -274,13 +280,16 @@ contract TitleRegistry is ReentrancyGuard {
             revert NotApprovedByOwner();
         }
         if (
-            msg.value >=
+            msg.value <
             (land[surveyNumber].marketValue +
                 ((land[surveyNumber].marketValue) / 10))
         ) {
             revert PriceNotMet(
                 land[surveyNumber].surveyNumber,
-                land[surveyNumber].marketValue
+                land[surveyNumber].marketValue,
+                (land[surveyNumber].marketValue +
+                    ((land[surveyNumber].marketValue) / 10)),
+                msg.value
             );
         }
         // No se le envía directamente el dinero al vendedor
@@ -341,11 +350,13 @@ contract TitleRegistry is ReentrancyGuard {
         if (proceeds <= 0) {
             revert NoProceeds();
         }
+
         s_proceeds[msg.sender] = 0;
         (bool success, ) = payable(msg.sender).call{value: proceeds}("");
         if (!success) {
             revert TransferFailed();
         }
+        emit TransferSuccess();
     }
 
     function getProceeds(address seller) external view returns (uint256) {
