@@ -287,7 +287,7 @@ import { TitleRegistry } from '../../typechain-types';
           titleregistry = titleregistryContract.connect(buyer);
           await expect(titleregistry.requestToLandOwner(12467674889)).to.emit(
             titleregistry,
-            'PropertyStatusChanged'
+            'PropertyRequestStatusChanged'
           );
         });
         it('No se puede realizar solicitudes de compra a propiedades que no esten disponibles', async function () {
@@ -328,7 +328,7 @@ import { TitleRegistry } from '../../typechain-types';
           titleregistry = titleregistryContract.connect(seller);
           await expect(titleregistry.processRequest(12467674889, 3)).to.emit(
             titleregistry,
-            'PropertyStatusChanged'
+            'PropertyRequestStatusChanged'
           );
         });
         it('Solo se pueden procesar solicitudes de compra que se encuentren en estado pendiente (PENDING))', async function () {

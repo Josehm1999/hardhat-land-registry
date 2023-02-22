@@ -27,32 +27,39 @@ contract TitleRegistry is ReentrancyGuard {
         string district
     );
     // error TransferFailed();
-    error PriceNotMet(
-        uint256 surveyNumber,
-        uint256 price,
-        uint256 price_sended,
-        uint256 price_calculated
-    );
+    error PriceNotMet(uint256 surveyNumber, uint256 price);
 
     event PropertyListed(
-        address indexed seller,
+        string state,
+        string district,
+        string neighborhood,
         uint256 indexed surveyNumber,
-        uint256 price
+        address indexed seller,
+        uint256 marketValue,
+        bool isAvailable,
+        ReqStatus
     );
 
     event PropertyBought(
         address indexed buyer,
         uint256 indexed surveyNumber,
-        uint256 price
+        uint256 marketValue
     );
 
-    event PropertyStatusChanged(uint256 indexed surveyNumber, ReqStatus);
-    event PropertyChangedAvailability(uint256 indexed surveyNumber);
-    event TransactionCanceled(
+    event PropertyRequestStatusChanged(
+        uint256 indexed surveyNumber,
         address indexed seller,
-        uint256 indexed surveyNumber
+        ReqStatus
     );
-    event TransferSuccess();
+    event PropertyChangedAvailability(
+        uint256 indexed surveyNumber,
+        address indexed seller,
+        bool isAvailable
+    );
+    event TransactionCanceled(
+        uint256 indexed surveyNumber,
+        address indexed seller
+    );
 
     event RegionalAdminCreated(address indexed regionalAdmin, string district);
 
@@ -69,7 +76,9 @@ contract TitleRegistry is ReentrancyGuard {
         ReqStatus requestStatus;
     }
 
-    receive() external payable {} // to support receiving ETH by default
+    receive() external payable {}
+
+    // to support receiving ETH by default
 
     fallback() external payable {}
 
@@ -146,9 +155,14 @@ contract TitleRegistry is ReentrancyGuard {
         profile[_ownerAddress].assetList.push(_surveyNumber);
 
         emit PropertyListed(
-            land[_surveyNumber].currentOwner,
+            land[_surveyNumber].state,
+            land[_surveyNumber].district,
+            land[_surveyNumber].neighborhood,
             _surveyNumber,
-            land[_surveyNumber].marketValue
+            land[_surveyNumber].currentOwner,
+            land[_surveyNumber].marketValue,
+            land[_surveyNumber].isAvailable,
+            land[_surveyNumber].requestStatus
         );
         return true;
     }
@@ -166,9 +180,14 @@ contract TitleRegistry is ReentrancyGuard {
 
         land[_surveyNumber].marketValue = _marketValue;
         emit PropertyListed(
-            land[_surveyNumber].currentOwner,
+            land[_surveyNumber].state,
+            land[_surveyNumber].district,
+            land[_surveyNumber].neighborhood,
             _surveyNumber,
-            land[_surveyNumber].marketValue
+            land[_surveyNumber].currentOwner,
+            land[_surveyNumber].marketValue,
+            land[_surveyNumber].isAvailable,
+            land[_surveyNumber].requestStatus
         );
     }
 
@@ -230,7 +249,11 @@ contract TitleRegistry is ReentrancyGuard {
         land[surveyNumber].requester = msg.sender;
         land[surveyNumber].isAvailable = false;
         land[surveyNumber].requestStatus = ReqStatus.PENDING;
-        emit PropertyStatusChanged(surveyNumber, ReqStatus.PENDING);
+        emit PropertyRequestStatusChanged(
+            surveyNumber,
+            land[surveyNumber].currentOwner,
+            ReqStatus.PENDING
+        );
     }
 
     function viewAssets() external view returns (uint256[] memory) {
@@ -247,10 +270,18 @@ contract TitleRegistry is ReentrancyGuard {
         }
 
         land[surveyNumber].requestStatus = status;
-        emit PropertyStatusChanged(surveyNumber, status);
+        emit PropertyRequestStatusChanged(
+            surveyNumber,
+            land[surveyNumber].currentOwner,
+            status
+        );
         if (status == ReqStatus.REJECTED) {
             land[surveyNumber].requester = address(0);
             land[surveyNumber].requestStatus = ReqStatus.DEFAULT;
+            emit TransactionCanceled(
+                surveyNumber,
+                land[surveyNumber].currentOwner
+            );
         }
     }
 
@@ -259,7 +290,11 @@ contract TitleRegistry is ReentrancyGuard {
             revert NotOwner();
         }
         land[surveyNumber].isAvailable = true;
-        emit PropertyChangedAvailability(surveyNumber);
+        emit PropertyChangedAvailability(
+            surveyNumber,
+            land[surveyNumber].currentOwner,
+            true
+        );
     }
 
     function makeUnavailable(uint256 surveyNumber) public {
@@ -272,7 +307,11 @@ contract TitleRegistry is ReentrancyGuard {
         }
 
         land[surveyNumber].isAvailable = false;
-        emit PropertyChangedAvailability(surveyNumber);
+        emit PropertyChangedAvailability(
+            surveyNumber,
+            land[surveyNumber].currentOwner,
+            false
+        );
     }
 
     function buyProperty(uint256 surveyNumber) external payable nonReentrant {
@@ -286,10 +325,7 @@ contract TitleRegistry is ReentrancyGuard {
         ) {
             revert PriceNotMet(
                 land[surveyNumber].surveyNumber,
-                land[surveyNumber].marketValue,
-                (land[surveyNumber].marketValue +
-                    ((land[surveyNumber].marketValue) / 10)),
-                msg.value
+                land[surveyNumber].marketValue
             );
         }
         // No se le envía directamente el dinero al vendedor
@@ -356,7 +392,6 @@ contract TitleRegistry is ReentrancyGuard {
         if (!success) {
             revert TransferFailed();
         }
-        emit TransferSuccess();
     }
 
     function getProceeds(address seller) external view returns (uint256) {

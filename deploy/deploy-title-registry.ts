@@ -25,6 +25,7 @@ const deployTitleSystem: DeployFunction = async function (
         args: args,
         log: true,
         waitConfirmations: waitBlockConfirmations,
+        gasPrice: '50000000000'
     })
     // Verificar el despliegue
     if (
