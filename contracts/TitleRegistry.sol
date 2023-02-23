@@ -41,6 +41,7 @@ contract TitleRegistry is ReentrancyGuard {
     );
 
     event PropertyBought(
+        address indexed seller,
         address indexed buyer,
         uint256 indexed surveyNumber,
         uint256 marketValue
@@ -346,17 +347,19 @@ contract TitleRegistry is ReentrancyGuard {
         s_proceeds[land[surveyNumber].currentOwner] += msg.value;
 
         removeOwnership(land[surveyNumber].currentOwner, surveyNumber);
-        land[surveyNumber].currentOwner = msg.sender;
         land[surveyNumber].isAvailable = false;
         land[surveyNumber].requester = address(0);
         land[surveyNumber].requestStatus = ReqStatus.DEFAULT;
         profile[msg.sender].assetList.push(surveyNumber); //adds the property to the asset list of the new owner.
 
         emit PropertyBought(
+            land[surveyNumber].currentOwner,
             msg.sender,
             land[surveyNumber].surveyNumber,
             land[surveyNumber].marketValue
         );
+
+        land[surveyNumber].currentOwner = msg.sender;
     }
 
     function removeOwnership(address previousOwner, uint256 surveyNumber)
