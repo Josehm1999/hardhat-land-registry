@@ -25,6 +25,7 @@ const POLYGON_MAINNET_RPC_URL =
   process.env.POLYGON_MAINNET_RPC_URL ||
   'https://polygon-mainnet.alchemyapi.io/v2/your-api-key'
 const PRIVATE_KEY = process.env.PRIVATE_KEY || '0x'
+const PRIVATE_KEY_ADMIN = process.env.PRIVATE_KEY_ADMIN || '0x'
 // optional
 const MNEMONIC = process.env.MNEMONIC || 'your mnemonic'
 
@@ -51,7 +52,7 @@ const config: HardhatUserConfig = {
     },
     goerli: {
       url: GOERLI_RPC_URL,
-      accounts: [PRIVATE_KEY],
+      accounts: [PRIVATE_KEY, PRIVATE_KEY_ADMIN],
       //   accounts: {
       //     mnemonic: MNEMONIC,
       //   },

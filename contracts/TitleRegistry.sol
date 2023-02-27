@@ -37,6 +37,7 @@ contract TitleRegistry is ReentrancyGuard {
         address indexed seller,
         uint256 marketValue,
         bool isAvailable,
+        address requester,
         ReqStatus
     );
 
@@ -131,7 +132,7 @@ contract TitleRegistry is ReentrancyGuard {
         uint256 _surveyNumber,
         address payable _ownerAddress,
         uint256 _marketValue
-    ) public returns (bool) {
+    ) public {
         if (regionalAdmin[_district] != msg.sender) {
             revert MustBeRegionalAdminAndFromSameDistrict(
                 msg.sender,
@@ -147,12 +148,18 @@ contract TitleRegistry is ReentrancyGuard {
             revert PriceMustBeAboveZero();
         }
 
-        land[_surveyNumber].state = _state;
-        land[_surveyNumber].district = _district;
-        land[_surveyNumber].neighborhood = _neighborhood;
-        land[_surveyNumber].surveyNumber = _surveyNumber;
-        land[_surveyNumber].currentOwner = _ownerAddress;
-        land[_surveyNumber].marketValue = _marketValue;
+        land[_surveyNumber] = TitleDetails({
+            state: _state,
+            district: _district,
+            neighborhood: _neighborhood,
+            surveyNumber: _surveyNumber,
+            currentOwner: _ownerAddress,
+            marketValue: _marketValue,
+            isAvailable: false,
+            requester: address(0),
+            requestStatus: ReqStatus.DEFAULT
+        });
+
         profile[_ownerAddress].assetList.push(_surveyNumber);
 
         emit PropertyListed(
@@ -163,9 +170,9 @@ contract TitleRegistry is ReentrancyGuard {
             land[_surveyNumber].currentOwner,
             land[_surveyNumber].marketValue,
             land[_surveyNumber].isAvailable,
+            land[_surveyNumber].requester,
             land[_surveyNumber].requestStatus
         );
-        return true;
     }
 
     function updateTitleRegistry(uint256 _surveyNumber, uint256 _marketValue)
@@ -188,6 +195,7 @@ contract TitleRegistry is ReentrancyGuard {
             land[_surveyNumber].currentOwner,
             land[_surveyNumber].marketValue,
             land[_surveyNumber].isAvailable,
+            land[_surveyNumber].requester,
             land[_surveyNumber].requestStatus
         );
     }
